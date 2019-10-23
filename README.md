@@ -1,7 +1,7 @@
 # Implementing the Exponential Mechanism with Base-2 DP
 Author: Christina Ilvento
 
-[*Full Paper*]()
+[*Full Paper Draft*](https://drive.google.com/file/d/1EQgyDFwoQaT0JwHEDLixWkwRxHd_QA_h/view?usp=sharing)
 ## *Code and supplemental materials.*
 
 **Abstract**
