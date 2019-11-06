@@ -166,6 +166,8 @@ class ExpMech:
 
     # Determine the maximum power of two for sampling
     i_max = 0
+    while gmpy2.exp2(i_max) > t:
+      i_max -= 1
     while gmpy2.exp2(i_max) <= t:
       i_max += 1
     # sample a random number
@@ -177,9 +179,66 @@ class ExpMech:
       if C[i] >= s:
        return i
 
+  # Optimized normalized sampling logic.
+  def optimized_normalized_sample(self,W):
+    """ Optimized Normalized sampling without division.
+
+        Args:
+          W: a set of weights from which to sample.
+
+        Returns: an integer in [0,len(W)] corresponding to the index sampled.
+        WARNING: introduces a timing channel for differing weight distributions.
+    """
+    t = gmpy2.fsum(W)  # compute total weight
+    C = [gmpy2.fsum(W[0:i+1]) for i in range(0, len(W))]  # compute cumulative weights
+    u = len(W)-1
+    l = 0
+    s = 0
+
+    log2t = 0
+    while gmpy2.exp2(log2t) > t:
+      log2t -= 1
+    while gmpy2.exp2(log2t) <= t: # j = floor(log_2(t))
+      log2t += 1
+    j = log2t
+
+    while u != l:
+      r = self.rng()
+      s + r*gmpy2.exp2(j)
+      
+      if s > t: # Start over
+        s = 0
+        j = log2t
+        u = len(W)-1
+        l = 0
+      
+      # update l
+      new_l = l
+      for i in range(l, u):
+        if C[i] < s:
+          new_l = i + 1 # i is outside the range of s, i+1 is smallest index that could be in range
+      l = new_l
+
+      # update u
+      new_u = u
+      for i in range(u,l,-1):
+        if C[i] > s + gmpy2.exp2(j-1): # no longer possible to reach i
+          new_u = i - 1
+      u = new_u
+
+      j -= 1 # decrement j 
+      # NOTE: we don't explicitly check that j is within the allowed precision
+      # we allow an error to be raised instead, as j should never exceed the allowed
+      # precision if the weights have been computed correctly.
+    return l
+
   # Exact exponential mechanism
-  def exact_exp_mech(self, O):
-    """ Run the mechanism over the outcome space O. Returns a single element from O sampled from the exponential mechanism. """
+  def exact_exp_mech(self, O, optimized_sample = False):
+    """ Run the mechanism over the outcome space O. 
+        Returns a single element from O sampled from the exponential mechanism. 
+        Defaults to un-optimized sampling logic. 
+        Setting optimized_sample=True can result in timing channels.
+    """
     # check that O matches size requirements
     if len(O) > self.max_outcomes:
       raise RuntimeError('Outcome space size too large.')
@@ -193,7 +252,10 @@ class ExpMech:
     self.check_context()
 
     # Sample
-    return O[self.normalized_sample(W)]
+    if optimized_sample == True:
+      return O[self.optimized_normalized_sample(W)]
+    else:
+      return O[self.normalized_sample(W)]
 
 
 class LaplaceMech(ExpMech):
@@ -242,7 +304,9 @@ class LaplaceMech(ExpMech):
     ExpMech.__init__(self,rng,eta_x,eta_y,eta_z,min_u,max_u,max_O,min_sampling_precision)
     self.set_utility(u)
 
-  def run_mechanism(self):
-    """ Runs the mechanism and returns a single outcome from O. """
+  def run_mechanism(self, optimized_sample = False):
+    """ Runs the mechanism and returns a single outcome from O. 
+        Defaults to un-optimized sampling logic. 
+        Setting optimized_sample=True can result in timing channels."""
     O = self.Outcomes
-    return self.exact_exp_mech(O)
+    return self.exact_exp_mech(O,optimized_sample=optimized_sample)

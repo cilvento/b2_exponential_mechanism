@@ -7,7 +7,7 @@ from expmech import *
 
 # Run n discrete outcome space timing tests with max_O utility and k elements.
 # Returns: (b2 mechanism setup time, b2 avg run time, naive avg run time) in seconds and precision
-def utility_range_timing_tests(n=100, k = 10, max_O=100, eta_x=1, eta_y=1,min_sampling_precision=1):
+def utility_range_timing_tests(n=100,  max_O=100, k = 10, eta_x=1, eta_y=1,min_sampling_precision=1,optimized_sample=False):
   """ Tests with a fixed outcome set size with varying utility range.
 
       ** Args: **
@@ -17,6 +17,7 @@ def utility_range_timing_tests(n=100, k = 10, max_O=100, eta_x=1, eta_y=1,min_sa
       eta_x (int): privacy parameter;
       eta_y (int): privacy parameter;
       min_sampling_precision: minimum sampling precision;
+      optimized_sample: whether to use optimized sampling procedure;
 
       **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds, and the precision used
       """
@@ -42,7 +43,7 @@ def utility_range_timing_tests(n=100, k = 10, max_O=100, eta_x=1, eta_y=1,min_sa
   # base 2 test loop
   start_b2 = timer()
   for i in range(0, n):
-    e.exact_exp_mech(O)
+    e.exact_exp_mech(O,optimized_sample=optimized_sample)
   end_b2 = timer()
   b2_avg = (end_b2 - start_b2)/n
 
@@ -57,7 +58,7 @@ def utility_range_timing_tests(n=100, k = 10, max_O=100, eta_x=1, eta_y=1,min_sa
 
 # Run n discrete outcome space timing tests with max_O elements.
 # Returns: (b2 mechanism setup time, b2 avg run time, naive avg run time) in seconds and precision
-def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precision=1):
+def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precision=1,optimized_sample=False):
   """ Tests with a discrete outcome space of varying size and utility range.
 
           ** Args: **
@@ -66,6 +67,7 @@ def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precis
           eta_x (int): privacy parameter;
           eta_y (int): privacy parameter;
           min_sampling_precision: minimum sampling precision;
+          optimized_sample: whether to use optimized sampling procedure;
 
           **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds, and the precision used
           """
@@ -91,7 +93,7 @@ def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precis
   # base 2 test loop
   start_b2 = timer()
   for i in range(0, n):
-    e.exact_exp_mech(O)
+    e.exact_exp_mech(O,optimized_sample=optimized_sample)
   end_b2 = timer()
   b2_avg = (end_b2 - start_b2)/n
 
@@ -105,8 +107,8 @@ def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precis
   return setup_time, b2_avg, naive_avg, prec
 
 
-def laplace_timing_tests(n=100, b_min=-10,b_max=10, gamma=2**(-4), eta_x=1, eta_y=1,min_sampling_precision=10):
-    """ Tests the LaplaceMech.
+def laplace_timing_tests(n=100, b_min=-10,b_max=10, gamma=2**(-4), eta_x=1, eta_y=1,min_sampling_precision=10,optimized_sample=False):
+  """ Tests the LaplaceMech.
 
         ** Args: **
         n : number of trials per parameter;
@@ -115,12 +117,12 @@ def laplace_timing_tests(n=100, b_min=-10,b_max=10, gamma=2**(-4), eta_x=1, eta_
         eta_x (int): privacy parameter;
         eta_y (int): privacy parameter;
         min_sampling_precision: minimum sampling precision;
+        optimized_sample: whether to use optimized sampling procedure;
 
         **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds
-        """
-  eta_z = 1
-
+  """
   # setup outcome space, utility function and other parameters
+  eta_z = 1
   t = np.random.randint(b_min,b_max) # select a random "target" value in the range
   util = lambda x: abs(t-x)
   s = 1 # set the sensitivity to 1
@@ -137,7 +139,7 @@ def laplace_timing_tests(n=100, b_min=-10,b_max=10, gamma=2**(-4), eta_x=1, eta_
   # base 2 test loop
   start_b2 = timer()
   for j in range(0, n):
-    l.run_mechanism()
+    l.run_mechanism(optimized_sample=optimized_sample)
   end_b2 = timer()
   b2_avg = (end_b2 - start_b2)/n
 
@@ -160,9 +162,13 @@ def run_timing_tests():
   eta_y = 1
   sizes = [100,200,300,400,500,600,700,800,900,1000,1250,1500,2000,2500]
   discrete_results = []
+  opt_discrete_results = []
   for s in sizes:
-    discrete_results.append(discrete_timing_tests(n,s,eta_x,eta_y,min_sampling_precision))
-  plt.plot(sizes,[discrete_results[i][1] for i in range(0, len(discrete_results))],marker='o',label='b2 average time')
+    discrete_results.append(discrete_timing_tests(n,s,eta_x,eta_y,min_sampling_precision,optimized_sample=False))
+    opt_discrete_results.append(discrete_timing_tests(n,s,eta_x,eta_y,min_sampling_precision,optimized_sample=True))
+
+  plt.plot(sizes,[discrete_results[i][1] for i in range(0, len(discrete_results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(sizes,[opt_discrete_results[i][1] for i in range(0, len(discrete_results))],marker='o',linestyle='--',label='b2 opt average time')
   plt.plot(sizes,[discrete_results[i][2] for i in range(0, len(discrete_results))],marker='o',label='naive average time')
   plt.legend()
   plt.title("Discrete Outcomes Tests")
@@ -170,12 +176,16 @@ def run_timing_tests():
   plt.show()
 
   # Utility range tests
-  extended_sizes = [100,1000,2000,3000,4000,5000]
+  extended_sizes = [4000*i for i in range(1, 20)]
+  extended_discrete_results = []
+  opt_extended_discrete_results = []
   k = 100 # test on 100 elements
   for s in extended_sizes:
     extended_discrete_results.append(utility_range_timing_tests(n,s,k,eta_x,eta_y,min_sampling_precision))
-  plt.plot(extended_sizes,[extended_discrete_results[i][1] for i in range(0, len(extended_discrete_results))],marker='o',label='b2 average time')
-  #plt.plot(extended_sizes,[extended_discrete_results[i][2] for i in range(0, len(extended_discrete_results))],marker='o',label='naive average time')
+    opt_extended_discrete_results.append(utility_range_timing_tests(n,s,k,eta_x,eta_y,min_sampling_precision,optimized_sample=True))
+  plt.plot(extended_sizes,[extended_discrete_results[i][1] for i in range(0, len(extended_discrete_results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(extended_sizes,[opt_extended_discrete_results[i][1] for i in range(0, len(extended_discrete_results))],marker='o',linestyle='--',label='b2 opt average time')
+  plt.plot(extended_sizes,[extended_discrete_results[i][2] for i in range(0, len(extended_discrete_results))],marker='o',label='naive average time')
   plt.legend()
   plt.title("Utility Range Tests")
   plt.xlabel("utility range size")
@@ -188,10 +198,13 @@ def run_timing_tests():
   eta_y = 1
   gammas = [2**(-2), 2**(-3), 2**(-4),2**(-5), 2**(-6), 2**(-7), 2**(-8)]
   laplace_results = []
+  opt_laplace_results = []
   for g in gammas:
     laplace_results.append(laplace_timing_tests(n,gamma=g))
+    opt_laplace_results.append(laplace_timing_tests(n,gamma=g,optimized_sample=True))
 
-  plt.plot(gammas,[laplace_results[i][1] for i in range(0, len(laplace_results))],marker='o',label='b2 average time')
+  plt.plot(gammas,[laplace_results[i][1] for i in range(0, len(laplace_results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(gammas,[opt_laplace_results[i][1] for i in range(0, len(laplace_results))],marker='o',linestyle='--',label='b2 opt average time')
   plt.plot(gammas,[laplace_results[i][2] for i in range(0, len(laplace_results))],marker='o',label='naive average time')
   plt.xlabel(r"Granularity $\gamma$")
   plt.legend()
