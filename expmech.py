@@ -191,46 +191,40 @@ class ExpMech:
     """
     t = gmpy2.fsum(W)  # compute total weight
     C = [gmpy2.fsum(W[0:i+1]) for i in range(0, len(W))]  # compute cumulative weights
-    u = len(W)-1
-    l = 0
     s = 0
-
     log2t = 0
     while gmpy2.exp2(log2t) > t:
       log2t -= 1
-    while gmpy2.exp2(log2t) <= t: # j = floor(log_2(t))
+    while gmpy2.exp2(log2t) <= t: 
       log2t += 1
-    j = log2t
-
-    while u != l:
+    j = log2t - 1
+    remaining = [i for i in range(0,len(W))] 
+    if t < gmpy2.exp2(log2t):
+      remaining.append(len(W)) # add a dummy value
+      C.append(gmpy2.exp2(log2t))
+    while len(remaining)>1:
       r = self.rng()
-      s + r*gmpy2.exp2(j)
-      
-      if s > t: # Start over
+      s = s + r*gmpy2.exp2(j)
+
+      to_remove = []
+      for i in remaining: # check if each remaining index is still reachable
+        if C[i] <= s:
+          to_remove.append(i)          
+        if i > 0:
+          if C[i-1] >= s + gmpy2.exp2(j):
+            to_remove.append(i)
+      for i in to_remove:
+        remaining.remove(i)
+      if len(remaining) == 1 and remaining[0]==len(W):
         s = 0
-        j = log2t
-        u = len(W)-1
-        l = 0
-      
-      # update l
-      new_l = l
-      for i in range(l, u):
-        if C[i] < s:
-          new_l = i + 1 # i is outside the range of s, i+1 is smallest index that could be in range
-      l = new_l
+        j = log2t # don't subtract 1, it's going to be decremented
+        remaining = [i for i in range(0,len(W))]
+        if t < gmpy2.exp2(log2t):
+          remaining.append(len(W)) # add a dummy value
+          C.append(gmpy2.exp2(log2t))
 
-      # update u
-      new_u = u
-      for i in range(u,l,-1):
-        if C[i] > s + gmpy2.exp2(j-1): # no longer possible to reach i
-          new_u = i - 1
-      u = new_u
-
-      j -= 1 # decrement j 
-      # NOTE: we don't explicitly check that j is within the allowed precision
-      # we allow an error to be raised instead, as j should never exceed the allowed
-      # precision if the weights have been computed correctly.
-    return l
+      j -= 1
+    return remaining[0]
 
   # Exact exponential mechanism
   def exact_exp_mech(self, O, optimized_sample = False):
