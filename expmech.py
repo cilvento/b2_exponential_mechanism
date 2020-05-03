@@ -4,6 +4,7 @@
 
 import gmpy2
 from gmpy2 import mpfr, mpz
+import math
 
 class ExpMech:
   """ The ExpMech base class. """
@@ -30,23 +31,19 @@ class ExpMech:
     self.base = mpfr(pow(self.eta_x,self.eta_z))
     self.base *= mpfr(gmpy2.exp2(-gmpy2.mul(self.eta_y,self.eta_z)))
 
-    # 2. Compute (base)^u_min and (base)^u_max
-    min_weight = pow(self.base, self.u_min)
-    max_weight = pow(self.base, self.u_max)
-    mm = max_weight + min_weight
-
-    # 3. Compute maximum total utility and minimum total utility
-    max_total = max_weight*self.max_outcomes
-    min_total = min_weight*self.max_outcomes
-
-    # 4. Add max and min total utilities
-    max_min_total = max_total + min_weight
-    min_max_total = min_total + max_weight
+    # 2. Compute (base)^u_max
+    max_weight = mpfr(pow(self.base, self.u_min))
+    
+    # 3. Compute Combinations
+    for u in range(self.u_min, self.u_max):
+      u_weight = pow(self.base, u)
+      ceil_max_weight = gmpy2.rint_ceil(max_weight)
+      combination = ceil_max_weight + u_weight
 
   # Initialize a new mechanism
   def __init__(self, rng, eta_x = 1, eta_y = 0, eta_z = 1, \
-                     u_min = 10, u_max = 0, max_O=100, \
-                     min_sampling_precision = 10):
+                     u_max = 10, u_min = 0, max_O=100, \
+                     min_sampling_precision = 10, empirical_precision=True):
     """ Initializes a new ExpMech object including computing the required precision
         and setting inexact arithmetic exceptions.
 
@@ -55,10 +52,11 @@ class ExpMech:
           eta_x (int): privacy parameter;
           eta_y (int): privacy parameter;
           eta_z (int): privacy parameter;
-          u_min (int): the minimum utility (maximum magnitude);
-          u_max (int): the maximum utility (maximum magnitude);
+          u_max (int): the maximum utility (minimum weight);
+          u_min (int): the minimum utility (maximum weight);
           max_O (int): the maximum size of the outcome space;
           min_sampling_precision (int): the minimum precision at which to sample for randomized rounding
+          empirical_precision (bool): whether to use empirical minimum precision
     """
     # initialize precision_set to False
     self.precision_set = False
@@ -81,35 +79,53 @@ class ExpMech:
       self.eta_x = mpz(eta_x)
       self.eta_y = mpz(eta_y)
       self.eta_z = mpz(eta_z)
-      self.u_min = mpz(u_min)
       self.u_max = mpz(u_max)
+      self.u_min = mpz(u_min)
       self.max_outcomes = mpz(max_O)
     except gmpy2.InexactResultError:
       raise RuntimeError('Non-integer parameter when integer was expected')
 
+
+    # Check the parameter ranges
+    if self.u_max < self.u_min:
+      raise RuntimeError('u_max must be larger than u_min.')
+
     # Compute the required precision for the desired parameters
     # start from a small-ish precision so we don't waste unnecessary bits
     ctx = gmpy2.get_context()
-    ctx.precision = 16
-    while self.precision_set != True:
-      if gmpy2.get_context().precision >= gmpy2.get_max_precision():
-        raise RuntimeError('Failed to set precision: maximum precision exceeded.')
-      else:
-        try:
-          self.check_precision()
-        except gmpy2.InexactResultError:
-          ctx = gmpy2.get_context()
-          ctx.precision = 2*ctx.precision
+    if empirical_precision:
+      ctx.precision = 16
+      while self.precision_set != True:
+        if gmpy2.get_context().precision >= gmpy2.get_max_precision():
+          raise RuntimeError('Failed to set precision: maximum precision exceeded.')
         else:
-          self.precision_set = True
+          try:
+            self.check_precision()
+          except gmpy2.InexactResultError:
+            ctx = gmpy2.get_context()
+            ctx.precision = 2*ctx.precision
+          else:
+            self.precision_set = True
 
-    if self.precision_set != True:
-      raise RuntimeError('Failed to set precision.')
-    else:
-      ctx = gmpy2.get_context()
-      ctx.clear_flags() # clear any flags
-      self.context = ctx.copy() # store a copy to test future state
-      """ The gmpy2 context required for computations on this mechanism. """
+      if self.precision_set != True:
+        raise RuntimeError('Failed to set precision.')
+      else:
+        ctx = gmpy2.get_context()
+        ctx.clear_flags() # clear any flags
+        self.context = ctx.copy() # store a copy to test future state
+        """ The gmpy2 context required for computations on this mechanism. """
+        assert self.check_context(), 'Context invalid.'
+    else: 
+      bx = math.ceil(math.log2(eta_x))
+      if bx < 1:
+        bx = 1
+      p = (abs(u_max) + abs(u_min))*(eta_z * (eta_y + bx)) + max_O
+      if p >= gmpy2.get_max_precision():
+          raise RuntimeError('Failed to set precision: maximum precision exceeded.')
+      ctx.precision = p
+      self.check_precision()
+      self.precision_set = True
+      self.context = ctx.copy()
       assert self.check_context(), 'Context invalid.'
 
     # Set the minimum sampling precision, which cannot be greater than the context precision
@@ -138,7 +154,7 @@ class ExpMech:
     cutoff = x - int(x)
     if s > cutoff:
       output = int(x)
-    output = min(max(self.u_max, output),self.u_min)
+    output = min(max(self.u_min, output),self.u_max)
     return output
 
   # Set the utility function, wrapped in randomized rounding logic
@@ -230,8 +246,9 @@ class ExpMech:
   def exact_exp_mech(self, O, optimized_sample = False):
     """ Run the mechanism over the outcome space O. 
         Returns a single element from O sampled from the exponential mechanism. 
-        Defaults to un-optimized sampling logic. 
-        Setting optimized_sample=True can result in timing channels.
+        Defaults to un-optimized sampling logic. Un-optimized sampling logic
+        has a minor timing channel relating to the rejection probability of sampling.
+        Setting optimized_sample=True can result in more significant timing channels.
     """
     # check that O matches size requirements
     if len(O) > self.max_outcomes:
@@ -290,12 +307,12 @@ class LaplaceMech(ExpMech):
       raise RuntimeError('Sensitivity must be greater than 0.')
     u = lambda y: abs(x - y)/sensitivity
 
-    max_u = 0
-    min_u = int((b_max - b_min)/sensitivity) + 1
+    min_u = 0 
+    max_u = int((b_max - b_min)/sensitivity) + 1 
 
     # initialize the base class
     max_O = len(self.Outcomes)+1
-    ExpMech.__init__(self,rng,eta_x,eta_y,eta_z,min_u,max_u,max_O,min_sampling_precision)
+    ExpMech.__init__(self,rng,eta_x,eta_y,eta_z,max_u,min_u,max_O,min_sampling_precision)
     self.set_utility(u)
 
   def run_mechanism(self, optimized_sample = False):

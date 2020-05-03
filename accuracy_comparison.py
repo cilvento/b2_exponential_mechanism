@@ -52,7 +52,7 @@ def compare_rounded_probabilities():
   t = 0
   b_min = -10
   b_max = 10
-  gammas = [2**(-2), 2**(-3), 2**(-4),2**(-5), 2**(-6), 2**(-7), 2**(-8)]
+  gammas = [2**(-2), 2**(-3), 2**(-4),2**(-5), 2**(-6)]
   util = lambda x: abs(t-x)
   s = 1 # set the sensitivity to 1
   As = []
@@ -94,16 +94,20 @@ def compare_rounded_probabilities():
     plt.plot(O, lower_bound_probs,linestyle='--',marker='.',label='rr lower bound')
     plt.plot(O, upper_bound_probs,linestyle='--',marker='.',label='rr upper bound')
     plt.xlim(-5,5)
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.legend()
     plt.title("Randomized rounding bounds vs unrounded probability")
-    plt.show()
+    plt.savefig('figures/rrvsunrounded'+str(g)+'.png')
+    plt.close()
+    #plt.show()
 
 
 
   plt.plot(gammas, As, linestyle='--',marker='o', label='bound width')
   plt.legend()
   plt.title("Bound Widths")
-  plt.show()
+  plt.savefig('figures/boundwidths.png')
+  plt.close()
+  #plt.show()
 
   for i in range(0, len(gammas)):
     g = gammas[i]
@@ -111,8 +115,10 @@ def compare_rounded_probabilities():
     errs = errsets[i]
     plt.plot(O, errs,linestyle='--',marker='.',label='$\gamma=$'+str(g))
   plt.title("Point-wise error upper-bound")
-  plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-  plt.show()
+  plt.legend(loc='upper right')
+  plt.savefig('figures/pointwise_error.png')
+  plt.close()
+  #plt.show()
 
 
   for i in range(0, len(gammas)):
@@ -121,8 +127,9 @@ def compare_rounded_probabilities():
     errs = relerrsets[i]
     plt.plot(O, errs,linestyle='--',marker='.',label='$\gamma=$'+str(g))
   plt.title("Point-wise relative error upper-bound")
-  plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-  plt.show()
+  plt.legend()
+  plt.savefig('figures/pointwise_error_relative.png')
+  #plt.show()
 
 if __name__ == '__main__':
     compare_rounded_probabilities()

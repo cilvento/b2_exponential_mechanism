@@ -5,36 +5,25 @@ import matplotlib.pyplot as plt
 from naive import *
 from expmech import *
 
-# Run n discrete outcome space timing tests with max_O utility and k elements.
-# Returns: (b2 mechanism setup time, b2 avg run time, naive avg run time) in seconds and precision
-def utility_range_timing_tests(n=100,  max_O=100, k = 10, eta_x=1, eta_y=1,min_sampling_precision=1,optimized_sample=False):
-  """ Tests with a fixed outcome set size with varying utility range.
 
-      ** Args: **
-
-      n : number of trials per parameter;
-      k : outcome space size;
-      eta_x (int): privacy parameter;
-      eta_y (int): privacy parameter;
-      min_sampling_precision: minimum sampling precision;
-      optimized_sample: whether to use optimized sampling procedure;
-
-      **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds, and the precision used
-      """
+def utility_range_benchmark(n, optimize):
+  num_trials = 10
+  start_setup_time = timer()    
+  k = 1000 # outcome space size
+  O = [i+n for i in range(1,k)]
+  O.insert(0,0)
+  eta_x = 1
+  eta_y = 1
   eta_z = 1
-
-  # setup outcome space, utility function and other parameters
-  O = [i for i in range(0, k)]
-  t = np.random.randint(0,k) # select a random "target" value
-  util = lambda x: abs(t - x)
-  u_min = max_O
-  u_max = 0
-  rng = lambda : np.random.randint(0,2) # np.random is a placeholder for demonstration purposes only
+  rng = lambda : np.random.randint(0,2) 
   eps = 2*np.log(2)*(-np.log2((eta_x/(2**eta_y))))
+  u_min = 0
+  u_max = n + k
+  max_O = k
+  util = lambda x: x
 
-  # mechanism setup
-  start_setup_time = timer()
-  e = ExpMech(rng,eta_x,eta_y,eta_z,u_min,u_max,max_O,min_sampling_precision)
+
+  e = ExpMech(rng,eta_x,eta_y,eta_z,u_max,u_min,max_O,min_sampling_precision=8)
   e.set_utility(util)
   prec = e.context.precision
   end_setup_time = timer()
@@ -42,49 +31,36 @@ def utility_range_timing_tests(n=100,  max_O=100, k = 10, eta_x=1, eta_y=1,min_s
 
   # base 2 test loop
   start_b2 = timer()
-  for i in range(0, n):
-    e.exact_exp_mech(O,optimized_sample=optimized_sample)
+  for i in range(0, num_trials):
+    e.exact_exp_mech(O,optimized_sample=optimize)
   end_b2 = timer()
-  b2_avg = (end_b2 - start_b2)/n
+  b2_avg = (end_b2 - start_b2)/num_trials
 
   # naive test loop
   start_naive = timer()
-  for i in range(0,n):
+  for i in range(0,num_trials):
     naive_exp_mech(eps,util,O)
   end_naive = timer()
-  naive_avg = (end_naive - start_naive)/n
+  naive_avg = (end_naive - start_naive)/num_trials
+  return setup_time, b2_avg, b2_avg + setup_time, naive_avg
 
-  return setup_time, b2_avg, naive_avg, prec
 
-# Run n discrete outcome space timing tests with max_O elements.
-# Returns: (b2 mechanism setup time, b2 avg run time, naive avg run time) in seconds and precision
-def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precision=1,optimized_sample=False):
-  """ Tests with a discrete outcome space of varying size and utility range.
-
-          ** Args: **
-          n : number of trials per parameter;
-          max_O : outcome space size;
-          eta_x (int): privacy parameter;
-          eta_y (int): privacy parameter;
-          min_sampling_precision: minimum sampling precision;
-          optimized_sample: whether to use optimized sampling procedure;
-
-          **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds, and the precision used
-          """
+def outcomespace_benchmark(n, optimize):
+  num_trials = 10
+  start_setup_time = timer()    
+  O = [i for i in range(0,n)]
+  eta_x = 1
+  eta_y = 1
   eta_z = 1
-
-  # setup outcome space, utility function and other parameters
-  O = [i for i in range(0, max_O)]
-  t = np.random.randint(0,max_O) # select a random "target" value
-  util = lambda x: abs(t - x)
-  u_min = max_O
-  u_max = 0
-  rng = lambda : np.random.randint(0,2) # np.random is a placeholder for demonstration purposes only
+  rng = lambda : np.random.randint(0,2) 
   eps = 2*np.log(2)*(-np.log2((eta_x/(2**eta_y))))
+  u_min = 0
+  u_max = n 
+  max_O = n
+  util = lambda x: x
 
-  # mechanism setup
-  start_setup_time = timer()
-  e = ExpMech(rng,eta_x,eta_y,eta_z,u_min,u_max,max_O,min_sampling_precision)
+
+  e = ExpMech(rng,eta_x,eta_y,eta_z,u_max,u_min,max_O,min_sampling_precision=8)
   e.set_utility(util)
   prec = e.context.precision
   end_setup_time = timer()
@@ -92,124 +68,180 @@ def discrete_timing_tests(n=100, max_O=100, eta_x=1, eta_y=1,min_sampling_precis
 
   # base 2 test loop
   start_b2 = timer()
-  for i in range(0, n):
-    e.exact_exp_mech(O,optimized_sample=optimized_sample)
+  for i in range(0, num_trials):
+    e.exact_exp_mech(O,optimized_sample=optimize)
   end_b2 = timer()
-  b2_avg = (end_b2 - start_b2)/n
+  b2_avg = (end_b2 - start_b2)/num_trials
 
   # naive test loop
   start_naive = timer()
-  for i in range(0,n):
+  for i in range(0,num_trials):
     naive_exp_mech(eps,util,O)
   end_naive = timer()
-  naive_avg = (end_naive - start_naive)/n
+  naive_avg = (end_naive - start_naive)/num_trials
+  return setup_time, b2_avg, b2_avg + setup_time, naive_avg
 
-  return setup_time, b2_avg, naive_avg, prec
-
-
-def laplace_timing_tests(n=100, b_min=-10,b_max=10, gamma=2**(-4), eta_x=1, eta_y=1,min_sampling_precision=10,optimized_sample=False):
-  """ Tests the LaplaceMech.
-
-        ** Args: **
-        n : number of trials per parameter;
-        b_min and b_max : range parameters;
-        gamma: granularity;
-        eta_x (int): privacy parameter;
-        eta_y (int): privacy parameter;
-        min_sampling_precision: minimum sampling precision;
-        optimized_sample: whether to use optimized sampling procedure;
-
-        **Returns: ** the base-2 mechanism setup time, b2 average run time, naive average run time in seconds
-  """
-  # setup outcome space, utility function and other parameters
+def precision_benchmark(n, precision):
+  num_trials = 10
+  optimize = True
+  start_setup_time = timer()    
+  O = [i for i in range(0,n)]
+  eta_x = 1
+  eta_y = 1
   eta_z = 1
-  t = np.random.randint(b_min,b_max) # select a random "target" value in the range
-  util = lambda x: abs(t-x)
-  s = 1 # set the sensitivity to 1
-  rng = lambda : np.random.randint(0,2) # np.random is a placeholder for demonstration purposes only
+  rng = lambda : np.random.randint(0,2) 
   eps = 2*np.log(2)*(-np.log2((eta_x/(2**eta_y))))
+  u_min = 0
+  u_max = n 
+  max_O = n
+  util = lambda x: x
 
-  # mechanism setup
-  start_setup_time = timer()
-  l = LaplaceMech(rng, t, s, eta_x, eta_y, eta_z, b_min,b_max,gamma, min_sampling_precision)
+
+  e = ExpMech(rng,eta_x,eta_y,eta_z,u_max,u_min,max_O,min_sampling_precision=8,empirical_precision=precision)
+  e.set_utility(util)
+  prec = e.context.precision
   end_setup_time = timer()
   setup_time = end_setup_time - start_setup_time
 
+  # base 2 test loop
+  start_b2 = timer()
+  for i in range(0, num_trials):
+    e.exact_exp_mech(O,optimized_sample=optimize)
+  end_b2 = timer()
+  b2_avg = (end_b2 - start_b2)/num_trials
+
+
+  return setup_time, b2_avg, b2_avg + setup_time
+
+
+def laplace_benchmark(gamma, optimize):
+  num_trials = 10
+  start_setup_time = timer()    
+  eta_x = 1
+  eta_y = 1
+  eta_z = 1
+  rng = lambda : np.random.randint(0,2) 
+  eps = 2*np.log(2)*(-np.log2((eta_x/(2**eta_y))))
+
+  l = LaplaceMech(rng, 0.0, 1.0, eta_x,eta_y,eta_z,-10.0,10.0,gamma, min_sampling_precision=8)
+  end_setup_time = timer()
+  setup_time = end_setup_time - start_setup_time
 
   # base 2 test loop
   start_b2 = timer()
-  for j in range(0, n):
-    l.run_mechanism(optimized_sample=optimized_sample)
+  for i in range(0, num_trials):
+    l.run_mechanism(optimize)
   end_b2 = timer()
-  b2_avg = (end_b2 - start_b2)/n
+  b2_avg = (end_b2 - start_b2)/num_trials
 
   # naive test loop
-  O = l.Outcomes
   start_naive = timer()
-  for j in range(0,n):
+  O = []
+  util = lambda x: abs(x)
+  while i*gamma - 10.0 <= 10.0:
+      O.append(i*gamma - 10)
+      i+= 1
+  for i in range(0,num_trials):
     naive_exp_mech(eps,util,O)
   end_naive = timer()
-  naive_avg = (end_naive - start_naive)/n
+  naive_avg = (end_naive - start_naive)/num_trials
+  return setup_time, b2_avg, b2_avg + setup_time, naive_avg
 
-  return setup_time, b2_avg, naive_avg
 
 def run_timing_tests():
   """ Runs a series of timing tests for the base-2 ExpMech class versus the naive base-e implementation. """
-  # Discrete tests
-  n = 10
-  min_sampling_precision = 1
-  eta_x = 1
-  eta_y = 1
-  sizes = [100,200,300,400,500,600,700,800,900,1000,1250,1500,2000,2500]
-  discrete_results = []
-  opt_discrete_results = []
-  for s in sizes:
-    discrete_results.append(discrete_timing_tests(n,s,eta_x,eta_y,min_sampling_precision,optimized_sample=False))
-    opt_discrete_results.append(discrete_timing_tests(n,s,eta_x,eta_y,min_sampling_precision,optimized_sample=True))
-
-  plt.plot(sizes,[discrete_results[i][1] for i in range(0, len(discrete_results))],marker='o',linestyle=':',label='b2 average time')
-  plt.plot(sizes,[opt_discrete_results[i][1] for i in range(0, len(discrete_results))],marker='o',linestyle='--',label='b2 opt average time')
-  plt.plot(sizes,[discrete_results[i][2] for i in range(0, len(discrete_results))],marker='o',label='naive average time')
-  plt.legend()
-  plt.title("Discrete Outcomes Tests")
-  plt.xlabel("Outcome Space Size")
-  plt.show()
-
-  # Utility range tests
-  extended_sizes = [4000*i for i in range(1, 20)]
-  extended_discrete_results = []
-  opt_extended_discrete_results = []
-  k = 100 # test on 100 elements
-  for s in extended_sizes:
-    extended_discrete_results.append(utility_range_timing_tests(n,s,k,eta_x,eta_y,min_sampling_precision))
-    opt_extended_discrete_results.append(utility_range_timing_tests(n,s,k,eta_x,eta_y,min_sampling_precision,optimized_sample=True))
-  plt.plot(extended_sizes,[extended_discrete_results[i][1] for i in range(0, len(extended_discrete_results))],marker='o',linestyle=':',label='b2 average time')
-  plt.plot(extended_sizes,[opt_extended_discrete_results[i][1] for i in range(0, len(extended_discrete_results))],marker='o',linestyle='--',label='b2 opt average time')
-  plt.plot(extended_sizes,[extended_discrete_results[i][2] for i in range(0, len(extended_discrete_results))],marker='o',label='naive average time')
-  plt.legend()
-  plt.title("Utility Range Tests")
-  plt.xlabel("utility range size")
-  plt.show()
-
-
+  
+  
   # Laplace tests
-  min_sampling_precision = 10
-  eta_x = 1
-  eta_y = 1
-  gammas = [2**(-2), 2**(-3), 2**(-4),2**(-5), 2**(-6), 2**(-7), 2**(-8)]
-  laplace_results = []
-  opt_laplace_results = []
-  for g in gammas:
-    laplace_results.append(laplace_timing_tests(n,gamma=g))
-    opt_laplace_results.append(laplace_timing_tests(n,gamma=g,optimized_sample=True))
-
-  plt.plot(gammas,[laplace_results[i][1] for i in range(0, len(laplace_results))],marker='o',linestyle=':',label='b2 average time')
-  plt.plot(gammas,[opt_laplace_results[i][1] for i in range(0, len(laplace_results))],marker='o',linestyle='--',label='b2 opt average time')
-  plt.plot(gammas,[laplace_results[i][2] for i in range(0, len(laplace_results))],marker='o',label='naive average time')
-  plt.xlabel(r"Granularity $\gamma$")
+  sizes = [1.0,0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625]
+  results = []
+  opt_results = []
+  for s in sizes:
+    results.append(laplace_benchmark(s, False))
+    opt_results.append(laplace_benchmark(s, True))
+    
+  plt.plot(sizes,[results[i][2] for i in range(0, len(results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(sizes,[opt_results[i][2] for i in range(0, len(opt_results))],marker='o',linestyle=':',label='b2-opt average time')
+  plt.plot(sizes,[results[i][3] for i in range(0, len(results))],marker='o',linestyle=':',label='naive average time')
   plt.legend()
   plt.title("Laplace Tests")
-  plt.show()
+  plt.xlabel("gamma")
+  plt.savefig('laplace.png')
+  plt.close()
+  # Output results
+  print("Laplace")
+  print("Gamma,", ','.join(map(str,sizes)))
+  print("Naive,", ','.join(map(str,[results[i][3] for i in range(0, len(results))])))
+  print("Not Optimized,", ','.join(map(str,[results[i][2] for i in range(0, len(results))])))
+  print("Optimized,", ','.join(map(str,[opt_results[i][2] for i in range(0, len(opt_results))])))
+
+
+  # Precision type tests
+  sizes = [100, 1000, 2000, 3000, 4000, 5000]
+  results = []
+  opt_results = []
+  for s in sizes:
+    results.append(precision_benchmark(s, False))
+    opt_results.append(precision_benchmark(s, True))
+    
+  plt.plot(sizes,[results[i][2] for i in range(0, len(results))],marker='o',linestyle=':',label='theoretical average time')
+  plt.plot(sizes,[opt_results[i][2] for i in range(0, len(opt_results))],marker='o',linestyle=':',label='empirical average time')
+  plt.legend()
+  plt.title("Precision Type Tests")
+  plt.xlabel("Size")
+  plt.savefig('precision_type.png')
+  plt.close()
+  print("Precision Type")
+  print("Sizes,", ','.join(map(str,sizes)))
+  print("Theoretical,", ','.join(map(str,[results[i][2] for i in range(0, len(results))])))
+  print("Empirical,", ','.join(map(str,[opt_results[i][2] for i in range(0, len(opt_results))])))
+
+
+  # Outcomespace Size tests
+  sizes = [100, 1000, 2000, 3000, 4000, 5000]
+  results = []
+  opt_results = []
+  for s in sizes:
+    results.append(outcomespace_benchmark(s, False))
+    opt_results.append(outcomespace_benchmark(s, True))
+    
+  plt.plot(sizes,[results[i][2] for i in range(0, len(results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(sizes,[opt_results[i][2] for i in range(0, len(opt_results))],marker='o',linestyle=':',label='b2-opt average time')
+  plt.plot(sizes,[results[i][3] for i in range(0, len(results))],marker='o',linestyle=':',label='naive average time')
+  plt.legend()
+  plt.title("Outcomesize Tests")
+  plt.xlabel("Size")
+  plt.savefig('outcome_size.png')
+  plt.close()
+  # Output results
+  print("Outcomesizes")
+  print("Sizes,", ','.join(map(str,sizes)))
+  print("Naive,", ','.join(map(str,[results[i][3] for i in range(0, len(results))])))
+  print("Not Optimized,", ','.join(map(str,[results[i][2] for i in range(0, len(results))])))
+  print("Optimized,", ','.join(map(str,[opt_results[i][2] for i in range(0, len(opt_results))])))
+
+  # Utility range tests
+  sizes = [100,1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000]
+  results = []
+  opt_results = []
+  for s in sizes:
+    results.append(utility_range_benchmark(s, False))
+    opt_results.append(utility_range_benchmark(s, True))
+    
+  plt.plot(sizes,[results[i][2] for i in range(0, len(results))],marker='o',linestyle=':',label='b2 average time')
+  plt.plot(sizes,[opt_results[i][2] for i in range(0, len(opt_results))],marker='o',linestyle=':',label='b2-opt average time')
+  plt.plot(sizes,[results[i][3] for i in range(0, len(results))],marker='o',linestyle=':',label='naive average time')
+  plt.legend()
+  plt.title("Utility Range Tests")
+  plt.xlabel("Range")
+  plt.savefig('utility_range.png')
+  plt.close()
+  # Output results
+  print("Utility Range")
+  print("Range,", ','.join(map(str,sizes)))
+  print("Naive,", ','.join(map(str,[results[i][3] for i in range(0, len(results))])))
+  print("Not Optimized,", ','.join(map(str,[results[i][2] for i in range(0, len(results))])))
+  print("Optimized,", ','.join(map(str,[opt_results[i][2] for i in range(0, len(opt_results))])))
 
 
 if __name__ == '__main__':
