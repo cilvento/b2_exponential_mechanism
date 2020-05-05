@@ -1,7 +1,7 @@
 # Implementing the Exponential Mechanism with Base-2 DP
 Author: Christina Ilvento
 
-[*Full Paper Draft*](https://drive.google.com/file/d/1EQgyDFwoQaT0JwHEDLixWkwRxHd_QA_h/view?usp=sharing)
+[*Paper*](https://arxiv.org/abs/1912.04222)
 ## *Code and supplemental materials.*
 
 **Abstract**
@@ -14,7 +14,7 @@ How do we achieve this result? We employ a simple trick of switching from base *
 
 
 ### Supplemental Materials
-* Demo and project overview: `demo.ipynb`
+* Demo and project overview: [`demo.ipynb`](./demo.ipynb)
 * Figures: `figures`
 
 ### Code

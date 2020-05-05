@@ -119,7 +119,7 @@ class ExpMech:
       bx = math.ceil(math.log2(eta_x))
       if bx < 1:
         bx = 1
-      p = (abs(u_max) + abs(u_min))*(eta_z * (eta_y + bx)) + max_O
+      p = (max(1,abs(u_max)) + max(1,abs(u_min)))*(eta_z * (eta_y + bx)) + max_O
       if p >= gmpy2.get_max_precision():
           raise RuntimeError('Failed to set precision: maximum precision exceeded.')
       ctx.precision = p
@@ -274,7 +274,7 @@ class LaplaceMech(ExpMech):
       Samples from the outcome space [b_min,b_max] at granularity gamma. """
   def __init__(self, rng, x, sensitivity, eta_x = 1, eta_y = 0, eta_z = 1, \
                      b_min = -10, b_max = 10, gamma = 2**(-4), \
-                     min_sampling_precision = 10):
+                     min_sampling_precision = 10, empirical_precision=True):
     """ Initializes the LaplaceMech including computing the required precision.
 
         Args:
@@ -288,7 +288,7 @@ class LaplaceMech(ExpMech):
         b_max (float or int): the upper bound of the output range;
         gamma (float): the discretization granularity
         min_sampling_precision (int): the minimum precision at which to sample for randomized rounding
-
+        empirical_precision (bool): whether to use the empirical precision
       """
     # compute outcome space
     O = []
@@ -312,7 +312,7 @@ class LaplaceMech(ExpMech):
 
     # initialize the base class
     max_O = len(self.Outcomes)+1
-    ExpMech.__init__(self,rng,eta_x,eta_y,eta_z,max_u,min_u,max_O,min_sampling_precision)
+    ExpMech.__init__(self,rng,eta_x,eta_y,eta_z,max_u,min_u,max_O,min_sampling_precision,empirical_precision)
     self.set_utility(u)
 
   def run_mechanism(self, optimized_sample = False):
