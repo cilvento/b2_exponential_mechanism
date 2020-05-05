@@ -13,12 +13,13 @@ In this work, we examine the practicalities of implementing the exponential mech
 How do we achieve this result? We employ a simple trick of switching from base *e* to base 2, allowing us to perform precise base 2 arithmetic. A short, precise expression is always available for epsilon, and the only approximation error we incur is the conversion of the base-2 privacy parameter back to base *e* for reporting purposes. The core base *e* arithmetic of the mechanism can be simply and efficiently implemented using open-source high precision floating point libraries. Furthermore, the exact nature of the implementation lends itself to simple monitoring of correctness and proofs of privacy.
 
 
-### Supplemental Materials
-* Demo and project overview: [`demo.ipynb`](./demo.ipynb)
-* Figures: `figures`
+## Supplemental Materials
+* Demo and project overview: Jupyter notebook [`python/demo.ipynb`](./python/demo.ipynb)  ([rendered as markdown](./demo/demo.md))
+* Figures: `figures/`
 
-### Code
-* Naive implementation of the exponential mechanism: see `naive.py`
-* Base-2 implementation of the exponential mechanism: see `expmech.py`
-* Timing tests: `timing_tests.py`
-* Accuracy bounds (randomized rounding): `accuracy_comparison.py`
+## Code
+### Python
+* Naive implementation of the exponential mechanism: see `python/naive.py`
+* Base-2 implementation of the exponential mechanism: see `python/expmech.py`
+* Timing tests: `python/timing_tests.py`
+* Accuracy bounds (randomized rounding): `python/accuracy_comparison.py`
