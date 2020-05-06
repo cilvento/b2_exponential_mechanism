@@ -69,7 +69,10 @@ impl ExponentialConfig {
 
 /// Implements the base-2 exponential mechanism.
 /// Utility convention is to take `-utility(o)`, and `utility_min` is therefore the highest
-/// possible weight/maximum probability outcome. This function calls `enter_exact_scope()` and 
+/// possible weight/maximum probability outcome. This mechanism does not scale based on
+/// the sensitivity of the utility function. For a utility function with sensitivity `alpha`,
+/// the mechanism is `2*alpha*eta` base-2 DP, and `2*alpha*ln(2)*eta` base-e DP. 
+/// This function calls `enter_exact_scope()` and 
 /// `exit_exact_scope()`, and therefore clears the `mpfr::flags` and does not preserve the 
 /// incoming flag state. **The caller must ensure that `utility_min`, `utility_max`, `max_outcomes`
 /// and `outcomes` are determined independently of the `utility` function.**
@@ -110,9 +113,9 @@ impl ExponentialConfig {
 ///                                     max_outcomes,
 ///                                     rng, optimize, empirical_precision);
 /// ```
-pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Eta, outcomes: &Vec<T>, utility: F,//fn(&T) -> f64,
+pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Eta, outcomes: &Vec<T>, utility: F,
                                 utility_min: i64, utility_max: i64, 
-                                max_outcomes: u32,// min_sampling_precision: u32,
+                                max_outcomes: u32,
                                 rng: R, optimize: bool, empirical_precision: bool) -> Result<&T, &'static str> {
     // Check Parameters
     eta.check()?;

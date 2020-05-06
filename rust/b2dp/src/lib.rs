@@ -4,8 +4,6 @@
 //! 
 //! **Status:** active development, reference implementation only. Not intended for uses other than research.
 //! 
-//! **Python Implementation:** the original Python implementation can be found 
-//! [here](https://github.com/cilvento/b2_exponential_mechanism).
 //! ## Background
 //! Although the exponential mechanism does not directly reveal the result of inexact
 //! floating point computations, it has been shown to be vulnerable to attacks based
@@ -44,6 +42,29 @@
 //!                                     rng, 
 //!                                     optimized_sample, 
 //!                                     empirical_precision).unwrap();
+//! ```
+//! **Scaling based on utility function sensitivity**
+//! Given a utility function with sensitivity `alpha`, the `exponential_mechanism` 
+//! implementation is `2*alpha*ln(2)*eta` base-e DP. To explicitly scale by `alpha`
+//! the caller can either modify the `eta` used or the utility function.
+//! ```
+//! use b2dp::{exponential_mechanism, Eta, GeneratorOpenSSL};
+//! 
+//! // Scale the privacy parameter to account for the utility sensitivity
+//! let epsilon = 1.25;
+//! let eta = Eta::from_epsilon(epsilon).unwrap();
+//! let alpha = 2.0;
+//! let eta_scaled = Eta::from_epsilon(epsilon/alpha).unwrap();
+//! ``` 
+//! ```
+//! 
+//! // Or scale the utility function to reduce sensitivity
+//! let alpha = 2.0;
+//! 
+//! fn util_fn (x: &u32) -> f64 {
+//!     return (2.0*(*x as f64)-0.0).abs();
+//! }
+//! let scaled_utility_fn = |x: &f64| -> f64 { *x/alpha };
 //! ```
 
 
