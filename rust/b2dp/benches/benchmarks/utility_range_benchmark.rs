@@ -1,5 +1,6 @@
 use criterion::{criterion_group, Criterion, BenchmarkId};
 use b2dp::{Eta, exponential_mechanism, GeneratorOpenSSL,mechanisms::naive::naive_exponential_mechanism};
+use b2dp::mechanisms::exponential::ExponentialOptions;
 
 fn utility_fn(x: &u32) -> f64 {
     *x as f64
@@ -15,7 +16,8 @@ fn run_mechanism(n: i64, optimize: bool) -> u32 {
     for i in 1..k {
         outcomes.push(i+ (n as u32));
     }
-    let result = exponential_mechanism(eta, &outcomes, utility_fn, 0, n+ k as i64, k, rng, optimize, false).unwrap();
+    let options = ExponentialOptions { min_retries: 1, optimized_sample: optimize, empirical_precision: false};
+    let result = exponential_mechanism(eta, &outcomes, utility_fn, 0, n+ k as i64, k, rng, options).unwrap();
     *result
 }
 
@@ -41,7 +43,7 @@ fn run_naive(n: i64) -> u32 {
 }
 
 
-fn bench_fibs(c: &mut Criterion) {
+fn bench_utility(c: &mut Criterion) {
     let mut group = c.benchmark_group("Utility Range");
     group.sample_size(10);
     for i in [100,1000, 10000, 20000, 30000, 40000, 50000].iter() {
@@ -55,5 +57,5 @@ fn bench_fibs(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_fibs);
+criterion_group!(benches, bench_utility);
 //criterion_main!(benches);

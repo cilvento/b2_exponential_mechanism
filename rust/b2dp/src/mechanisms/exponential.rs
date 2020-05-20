@@ -3,6 +3,45 @@
 use rug::{Float, ops::Pow, rand::ThreadRandGen};
 use crate::utilities::exactarithmetic::{ArithmeticConfig, normalized_sample, randomized_round};
 use crate::utilities::params::Eta;
+
+
+/// The exponential mechanism optional parameters. 
+#[derive(Debug, Clone, Copy)]
+pub struct ExponentialOptions {
+    /// The minimum number of retries for timing channel prevention
+    /// default: `1`
+    /// Minimum retries helps to mitigate timing channels in optimized
+    /// sampling. The higher the number of retries, the less likely
+    /// it is for an adversary to observe useful timing information. 
+    pub min_retries: u32,
+    
+    /// Whether to optimize sampling
+    /// default: `false`
+    /// Optimized sampling exacerbates timing channels, and it's not
+    /// recommended for use in un-trusted settings.
+    pub optimized_sample: bool,
+    
+    /// Whether to use empirical precision
+    /// default: `false`
+    /// Determination of safe precision given utility bounds and outcome
+    /// set size limits can be done analytically or empirically. Both
+    /// are independent of the dataset. Using `empirical_precision = true`
+    /// determines the required precision via a set of test calculations.
+    /// The timing overhead of these calculations is proportional to the outcome
+    /// set size, and the overhead may outweigh any reduction in required
+    /// precision. 
+    pub empirical_precision: bool,
+}
+impl Default for ExponentialOptions {
+    /// Default options for the exponential mechanism
+    /// `min_retries = 1`, `optimized_sample = false`, `empirical_precision = false` 
+    fn default() -> ExponentialOptions 
+    { 
+        ExponentialOptions { min_retries: 1, optimized_sample: false, empirical_precision: false} 
+    }
+}
+
+
 /// The exponential mechanism configuration. Includes all parameters 
 /// and information needed to derive the appropriate precision for the
 /// mechanism.
@@ -34,7 +73,7 @@ impl ExponentialConfig {
     /// Returns an error if any of the parameters are mis-specified, or if sufficient precision cannot
     /// be determined.
     pub fn new(eta: Eta, utility_min: i64, utility_max: i64, 
-               max_outcomes: u32, empirical_precision: bool)//, min_sampling_precision: u32)
+               max_outcomes: u32, empirical_precision: bool, min_retries: u32)//, min_sampling_precision: u32)
             -> Result<ExponentialConfig, &'static str> {
         
         
@@ -47,7 +86,7 @@ impl ExponentialConfig {
         }
 
         let arithmetic_config =  ArithmeticConfig::for_exponential(&eta, utility_min, utility_max, 
-                                                                   max_outcomes, empirical_precision)?;
+                                                                   max_outcomes, empirical_precision, min_retries)?;
 
         // Construct the configuration with the precision we determined above
         let config = ExponentialConfig {
@@ -71,15 +110,17 @@ impl ExponentialConfig {
 /// Utility convention is to take `-utility(o)`, and `utility_min` is therefore the highest
 /// possible weight/maximum probability outcome. This mechanism does not scale based on
 /// the sensitivity of the utility function. For a utility function with sensitivity `alpha`,
-/// the mechanism is `2*alpha*eta` base-2 DP, and `2*alpha*ln(2)*eta` base-e DP. 
-/// This function calls `enter_exact_scope()` and 
-/// `exit_exact_scope()`, and therefore clears the `mpfr::flags` and does not preserve the 
-/// incoming flag state. **The caller must ensure that `utility_min`, `utility_max`, `max_outcomes`
-/// and `outcomes` are determined independently of the `utility` function.**
+/// the mechanism is `2*alpha*eta` base-2 DP, and `2*alpha*ln(2)*eta` base-e DP.  
+/// **The caller must ensure that `utility_min`, `utility_max`, `max_outcomes`
+/// and `outcomes` are determined independently of the `utility` function and any private
+/// data.**
+/// 
 /// ## Arguments
 ///   * `eta`: the base-2 privacy parameter
 ///   * `outcomes`: the set of outcomes the mechanism chooses from
-///   * `utility`: utility function operating on elements of `outcomes`
+///   * `utility`: utility function operating on elements of `outcomes`. `utility` does not 
+///                explicitly take a database input, and is expected to have a pointer to the database
+///                or access to the private data needed to determine utilities. 
 ///   * `utility_min`: the minimum utility permitted by the mechanism (highest possible weight)
 ///   * `utility_max`: the maximum utility permitted by the mechanism (lowest possible weight)
 ///   * `max_outcomes`: the maximum number of outcomes permitted by the mechanism
@@ -95,7 +136,7 @@ impl ExponentialConfig {
 /// occurs. 
 /// ## Example
 /// ```
-/// use b2dp::{exponential_mechanism, Eta, GeneratorOpenSSL};
+/// use b2dp::{exponential_mechanism, Eta, GeneratorOpenSSL, ExponentialOptions};
 /// 
 /// fn util_fn (x: &u32) -> f64 {
 ///     return ((*x as f64)-0.0).abs();
@@ -105,18 +146,21 @@ impl ExponentialConfig {
 /// let utility_max = 10;
 /// let max_outcomes = 10;
 /// let rng = GeneratorOpenSSL {};
-/// let optimize = true;
-/// let empirical_precision = false;
+/// let options = ExponentialOptions {min_retries: 1, optimized_sample: true, empirical_precision: false};
 /// let outcomes: Vec<u32> = (0..max_outcomes).collect();
 /// let result = exponential_mechanism(eta, &outcomes, util_fn, 
 ///                                     utility_min, utility_max, 
 ///                                     max_outcomes,
-///                                     rng, optimize, empirical_precision);
+///                                     rng, options);
 /// ```
+/// ### Exact Arithmetic
+/// This function calls `enter_exact_scope()` and 
+/// `exit_exact_scope()`, and therefore clears the `mpfr::flags` and **does not preserve the 
+/// incoming flag state.**
 pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Eta, outcomes: &Vec<T>, utility: F,
                                 utility_min: i64, utility_max: i64, 
                                 max_outcomes: u32,
-                                rng: R, optimize: bool, empirical_precision: bool) -> Result<&T, &'static str> {
+                                rng: R, options: ExponentialOptions) -> Result<&T, &'static str> {
     // Check Parameters
     eta.check()?;
     if (max_outcomes as usize) < outcomes.len() {
@@ -125,7 +169,8 @@ pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Et
 
     // Generate an ExponentialConfig
     let mut exponential_config = ExponentialConfig::new(eta, utility_min, utility_max, 
-                                                        max_outcomes, empirical_precision)?;
+                                                        max_outcomes, options.empirical_precision,
+                                                        options.min_retries)?;
     
     // Compute Utilities
     let mut utilities = Vec::new();
@@ -155,7 +200,7 @@ pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Et
     }
 
     // Sample
-    let sample_index = normalized_sample(&weights, & mut exponential_config.arithmetic_config, rng, optimize)?;
+    let sample_index = normalized_sample(&weights, & mut exponential_config.arithmetic_config, rng, options.optimized_sample)?;
     let sample = &outcomes[sample_index];
 
     // Exit exact scope
@@ -170,37 +215,37 @@ pub fn exponential_mechanism<T, R: ThreadRandGen + Copy, F: Fn(&T)->f64>(eta: Et
 mod tests {
     use super::*;
     use crate::utilities::randomness::GeneratorOpenSSL;
+
+    /// Runs the exponential mechanism multiple times
     #[test]
     fn test_exponential_mechanism_basic() {
-        let eta = Eta::new(1,1,1).unwrap();
-        let utility_min = -100;
-        let utility_max = 0;
-        let max_outcomes = 10;
-        let rng = GeneratorOpenSSL {};
-
         let num_samples = 1000;
         let num_outcomes = 5;
         let outcomes: Vec<u32> = (0..num_outcomes).collect();
-        println!("Outcomes: {:?}", outcomes);
-    
+        let eta = Eta::new(1,1,1).unwrap();
+        let utility_min = 0;
+        let utility_max = (num_outcomes as i64)*2;
+        let max_outcomes = 10;
+        let rng = GeneratorOpenSSL {};
+
+
         fn util_fn (x: &u32) -> f64 {
             return (*x as f64)*2.0 ;
         }
 
-        let outcome = exponential_mechanism(eta, &outcomes, util_fn, 
+        let options: ExponentialOptions = Default::default();
+        let _outcome = exponential_mechanism(eta, &outcomes, util_fn, 
                                             utility_min, utility_max, 
                                             max_outcomes,
-                                            rng, false, false);
-        println!("Outcome: {:?}", outcome);
+                                            rng, options);
 
         let mut samples = [0;5];
         for _i in 0..num_samples {
             let sample = exponential_mechanism(eta, &outcomes, util_fn, 
                 utility_min, utility_max, 
                 max_outcomes,
-                rng, false, false).unwrap();
+                rng, options).unwrap();
             samples[*sample as usize] += 1;
         }
-        println!("{:?}", samples);   
     }
 }

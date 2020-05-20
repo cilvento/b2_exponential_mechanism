@@ -1,7 +1,7 @@
 //! Implements an approximation of the Laplace mechanims via the base-2 exponential mechanism. 
 
 use rug::rand::ThreadRandGen;
-use crate::mechanisms::exponential::exponential_mechanism;
+use crate::mechanisms::exponential::{exponential_mechanism, ExponentialOptions};
 use crate::utilities::params::Eta;
 
 /// Implements clamped Laplace mechanism via the base-2 exponential mechanism
@@ -31,12 +31,10 @@ use crate::utilities::params::Eta;
 /// let upper_bound = 10.0;
 /// let gamma = 0.25;
 /// let rng = GeneratorOpenSSL {};
-/// let optimize = false;
-/// let empirical_precision = false;
-/// let sample = clamped_laplace_mechanism(eta, lower_bound, upper_bound, target, gamma, rng, optimize, empirical_precision).unwrap();
+/// let sample = clamped_laplace_mechanism(eta, lower_bound, upper_bound, target, gamma, rng, Default::default()).unwrap();
 /// ```
 pub fn clamped_laplace_mechanism<R: ThreadRandGen + Copy>(eta: Eta, lower_bound: f64, upper_bound: f64, target: f64, gamma: f64,
-                                rng: R, optimize: bool, empirical_precision: bool) -> Result<f64, &'static str> 
+                                rng: R, options: ExponentialOptions) -> Result<f64, &'static str> 
     {
     // Check Parameters
     eta.check()?;
@@ -70,7 +68,7 @@ pub fn clamped_laplace_mechanism<R: ThreadRandGen + Copy>(eta: Eta, lower_bound:
                                         utility_max as i64, 
                                         max_outcomes as u32,
                                         rng, 
-                                        optimize, empirical_precision).unwrap();
+                                        options).unwrap();
 
     
     Ok(*sample)
@@ -86,7 +84,8 @@ mod tests {
     fn test_laplace_mechanism_basic() {
         let eta = Eta::new(1,1,1).unwrap();
         let rng = GeneratorOpenSSL {};
-        let sample = clamped_laplace_mechanism(eta,-10.0,10.0,1.0,0.25,rng,true, false);
+
+        let sample = clamped_laplace_mechanism(eta,-10.0,10.0,1.0,0.25,rng,Default::default());
         assert!(sample.is_ok());   
     }
 }

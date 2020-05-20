@@ -1,12 +1,13 @@
 use criterion::{criterion_group, Criterion, BenchmarkId};
 use b2dp::{Eta, GeneratorOpenSSL, mechanisms::laplace::clamped_laplace_mechanism};
-
+use b2dp::mechanisms::exponential::ExponentialOptions;
 
 fn run_mechanism(gamma: f64, precision: bool) -> f64 {
     let eta = Eta::new(1,1,1).unwrap();
     let optimize = false;
     let rng = GeneratorOpenSSL {};
-    let result = clamped_laplace_mechanism(eta,-10.0,10.0,0.0,gamma,rng,optimize,precision).unwrap();
+    let options = ExponentialOptions { min_retries: 1, optimized_sample: optimize, empirical_precision: precision};
+    let result = clamped_laplace_mechanism(eta,-10.0,10.0,0.0,gamma,rng,options).unwrap();
     result
 }
 

@@ -1,6 +1,6 @@
 use criterion::{criterion_group, Criterion, BenchmarkId};
 use b2dp::{Eta, GeneratorOpenSSL,mechanisms::naive::naive_exponential_mechanism, mechanisms::laplace::clamped_laplace_mechanism};
-
+use b2dp::mechanisms::exponential::ExponentialOptions;
 fn utility_fn(x: &f64) -> f64 {
     (0.0-*x).abs()
 }
@@ -9,7 +9,8 @@ fn utility_fn(x: &f64) -> f64 {
 fn run_mechanism(gamma: f64, optimize: bool) -> f64 {
     let eta = Eta::new(1,1,1).unwrap();
     let rng = GeneratorOpenSSL {};
-    let result = clamped_laplace_mechanism(eta,-10.0,10.0,0.0,gamma,rng,optimize,false).unwrap();
+    let options = ExponentialOptions { min_retries: 1, optimized_sample: optimize, empirical_precision: false};
+    let result = clamped_laplace_mechanism(eta,-10.0,10.0,0.0,gamma,rng,options).unwrap();
     result
 }
 
@@ -22,11 +23,9 @@ fn optimized(gamma: f64) -> f64 {
 }
 
 fn run_naive(gamma: f64) -> f64 {
-    let epsilon = 1.3; //Eta::new(1,1,1).unwrap();
+    let epsilon = 1.3; 
     let rng = GeneratorOpenSSL {};
     let mut outcomes: Vec<f64> = Vec::new();
-    //outcomes.push(0);
-    //let k: u32 = 1000; // outcome space size
     let mut x = -10.0;
     while x <= 10.0 {
         outcomes.push(x);

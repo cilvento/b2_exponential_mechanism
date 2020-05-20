@@ -61,20 +61,36 @@ fn get_power_bound(total_weight: &Float, arithmetic_config: &mut ArithmeticConfi
 
 /// Normalized Weighted Sampling
 /// Returns the index of the element sampled according to the weights provided.
-/// Uses optimized sampling if `optimize` set to true.
+/// Uses optimized sampling if `optimize` set to true. Setting `optimize` to true
+/// exacerbates timing channels. 
 /// ## Arguments
-///   * `weights`: the set of weights to use for sampling
+///   * `weights`: the set of weights to use for sampling; all weights must be positive, 
+///                zero-weight elements are not permitted.
 ///   * `arithmetic_config`: the arithmetic config specifying precision
 ///   * `rng`: source of randomness.
-///   * `optimize`: whether to optimize sampling, introducing a timing channel.
+///   * `optimize`: whether to optimize sampling, introducing a timing channel and an error condition
+///                 side channel.
+/// ## Returns
+/// Returns an index of an element sampled according to the weights provided. If the precision
+/// of the provided ArithmeticConfig is insufficient for sampling, the method returns an error.
+/// Note that errors are **not** returned on inexact arithmetic, and the caller is responsible
+/// for calling `enter_exact_scope()` and  `exit_exact_scope()` to monitor inexact arithmetic.
+/// 
+/// 
 /// ## Known Timing Channels
-/// This method has a known (but difficult to expoit) timing channel. To determine
-/// the index corresponding to sample, the method iterates through cumulative weights
-/// and terminates the loop when the index is found. This can be exploited in three ways:
+/// This method has known timing channels. They result from: 
+/// (1) Generating a random value in [0,2^k] and 
+/// (2) (In optimized sampling only) To determine the index corresponding to the random value, 
+/// the method iterates through cumulative weights
+/// and terminates the loop when the index is found and
+/// (3) (In optimized sampling only) Checking for zero weights 
+/// These can be exploited in several ways:
 ///   * **Rejection probability:** if the adversary can control the total weight of the utilities
 ///     such that the probability of rejection in the random index generation stage changes,
 ///     the time needed for sampling will vary between adjacent databases. The difference in time
-///     will depend on the speed of random number generation.
+///     will depend on the speed of random number generation. By default, ArithmeticConfig sets the 
+///     minimum retries to 1. To reduce the probability that this timing channel is accessible to an 
+///     adversary, the minimum number of retries can be increased via `ArithmeticConfig::set_retries`.
 ///   * **Optimized sampling:**
 ///     * **Ordering of weights:** if the adversary can change the ordering of the weights such
 ///       that the largest weights (most probable) weights are first under a certain condition,
@@ -84,6 +100,17 @@ fn get_power_bound(total_weight: &Float, arithmetic_config: &mut ArithmeticConfi
 ///       a certain condition holds, the weight is more concentrated and if not the weight is less
 ///       concentrated, then the adversary can use the time taken by normalized_sample as a signal
 ///       for whether the condition holds.
+///     * **Zero weight:** optimized sampling also rejects immediately if a zero weight is encountered. 
+///       If the adversary can inject a zero weight at a particular position in the weights depending on
+///       a private condition, they can use the time it takes to return an error as a timing channel.
+/// 
+/// The timing channels for optimized sampling could be somewhat (but not completely) mitigated by 
+/// shuffling the weights prior to calling `normalized_sample`.
+/// ### Exact Arithmetic
+/// `normalized_sample` does not explicitly call `enter_exact_scope()` or
+/// `exit_exact_scope()`, and therefore preserves any `mpfr::flags` that
+/// are set before the function is called. 
+
 pub fn normalized_sample<R: ThreadRandGen>(
                                             weights: &Vec<Float>,
                                             arithmetic_config: &mut ArithmeticConfig,
@@ -92,36 +119,74 @@ pub fn normalized_sample<R: ThreadRandGen>(
                                         ) -> Result<usize, &'static str> {
     // Compute the total weight
     let total_weight = Float::with_val(arithmetic_config.precision, Float::sum(weights.iter()));
+    if total_weight == 0 { return Err("Total weight zero. Weights must be positive."); }
+    let mut zero_weight: Option<()> = None;
+
+    // Iterate through all weights to test to prevent timing channel,
+    // unless `optimize = true`.
+    for w in weights.iter() {
+        if w.is_zero() { 
+            zero_weight = Some(()); 
+            if optimize  { return Err("All weights must be positive."); }
+        }
+    }
+
+    if zero_weight.is_some() {return Err("All weights must be positive.");}
     // Determine smallest `k` such that `2^k > total_weight`
     let k = get_power_bound(&total_weight, arithmetic_config);
     // Initialize the random state
     let mut rand_state = ThreadRandState::new_custom(&mut rng);
 
     let mut t = Float::with_val(arithmetic_config.precision, &total_weight);
+    let mut retries = 0;
+
     t += 1; // ensure that the initial `t` is larger than `total_weight`.
-    while t > total_weight {
-        t = Float::with_val(
+    while t >= total_weight || retries < arithmetic_config.retry_min {
+        let mut s = Float::with_val(
             arithmetic_config.precision,
             Float::random_bits(&mut rand_state),
         );
         // Multiply by 2^k to scale
         let two_pow_k = Float::with_val(arithmetic_config.precision, Float::i_exp(1, k));
-        t = t * two_pow_k;
+        s = s * two_pow_k;
+        // Assign to t if in bounds 
+        if s < total_weight {
+            t = Float::with_val(arithmetic_config.precision, &s);
+        }
+        retries += 1; // increment retries
     }
+    if t >= total_weight {return Err("Failed to produce t");}
     let mut cumulative_weight = Float::with_val(arithmetic_config.precision, 0);
-
     let mut index: Option<usize> = None;
+
     // Iterate through the weights until the cumulative weight is greater than or equal to `t`
     for i in 0..weights.len() {
         let next_weight = Float::with_val(arithmetic_config.precision, &weights[i]);
         cumulative_weight += next_weight;
-        if cumulative_weight >= t {
+        if cumulative_weight > t {
             // This is the index to return
-            if index.is_none() { index = Some(i); if optimize {return Ok(i);}}
+            if index.is_none() { 
+                // Check sufficient precision
+                let mut next_highest = Float::with_val(arithmetic_config.precision, &t);
+                next_highest.next_up(); 
+                if i < weights.len() - 1 {
+                    let next_weight = Float::with_val(arithmetic_config.precision, &weights[i+1]);
+                    let mut cumulative_next = Float::with_val(arithmetic_config.precision, &cumulative_weight);
+                    cumulative_next = cumulative_next + next_weight;
+                    if cumulative_next < next_highest {
+                        return Err("Sampling precision insufficient");
+                    }
+                }
+                index = Some(i); 
+                if optimize {
+                         return Ok(i); 
+                }
+            }
         }
 
     }
 
+    //if zero_weight.is_some() { return Err("All weights must be positive."); }
     if index.is_some() { return Ok(index.unwrap()); }
 
     // Return an error if we are unable to sample
@@ -144,6 +209,9 @@ pub struct ArithmeticConfig {
     pub inexact_arithmetic: bool, 
     /// Whether the code is currently in an exact scope
     exact_scope: bool,
+    /// The number of retries for timing channel prevention
+    /// default is 1.
+    retry_min: u32,
 }
 
 impl ArithmeticConfig {
@@ -151,11 +219,11 @@ impl ArithmeticConfig {
     pub fn basic() -> Result<ArithmeticConfig, &'static str> {
         let p ;//= 53;
         unsafe {p = mpfr::get_default_prec() as u32;}
-        let config = ArithmeticConfig {precision: p, inexact_arithmetic: false, exact_scope: false};
+        let config = ArithmeticConfig {precision: p, inexact_arithmetic: false, exact_scope: false, retry_min: 1};
         Ok(config)
     }
 
-    pub unsafe fn get_empirical_precision(eta: &Eta,
+    unsafe fn get_empirical_precision(eta: &Eta,
                                 utility_min: i64,
                                 utility_max: i64,
                                 max_outcomes: u32,
@@ -235,10 +303,10 @@ impl ArithmeticConfig {
                             utility_max: i64,
                             max_outcomes: u32,
                             empirical_precision: bool,
+                            min_retries: u32,
                         ) -> Result<ArithmeticConfig, &'static str> 
     {
         let p: u32;
-        //let empirical_precision = true;
 
         unsafe {
             // Clear the flags
@@ -271,6 +339,7 @@ impl ArithmeticConfig {
             precision: p,
             inexact_arithmetic: false,
             exact_scope: false,
+            retry_min: min_retries,
         };
         Ok(config)
     }
@@ -290,6 +359,13 @@ impl ArithmeticConfig {
         Ok(())
     }
 
+    /// Set the minimum number of retries for timing channel prevention. 
+    pub fn set_retries(& mut self, retry_min: u32) -> Result<(),&'static str>
+    {
+        self.retry_min = retry_min;
+        Ok(())
+        
+    }
     /// Returns whether the config is currently in a valid state
     pub fn is_valid(&self) -> bool {
         return !self.inexact_arithmetic;
@@ -354,6 +430,91 @@ mod tests {
     use crate::utilities::randomness::GeneratorOpenSSL;
     use rug::{ops::Pow};
 
+
+    #[test]
+    fn test_all_zero_weight_sampling(){
+        // Generate an arithmetic config
+        let rng = GeneratorOpenSSL {};
+        let mut arithmetic_config = ArithmeticConfig::basic().unwrap();
+        arithmetic_config.precision = 2;
+
+        let a = Float::with_val(arithmetic_config.precision*4, 0.0);
+        let b = Float::with_val(arithmetic_config.precision*4, 0.0);
+        let c = Float::with_val(arithmetic_config.precision*4, 0.0);
+        let d = Float::with_val(arithmetic_config.precision*4, 0.0);
+        let mut weights: Vec<Float> = Vec::new();
+        weights.push(a);
+        weights.push(b);
+        weights.push(c);
+        weights.push(d);
+
+        // this example should fail due to zero total weight
+        let mut exact = arithmetic_config.enter_exact_scope();
+        assert!(exact.is_ok());
+        if let Err(e) = normalized_sample(&weights, & mut arithmetic_config, rng, false) {
+            assert_eq!(e, "Total weight zero. Weights must be positive.");
+        }
+
+        exact = arithmetic_config.exit_exact_scope();
+        assert!(exact.is_ok());
+    }
+
+    #[test]
+    fn test_zero_weight_sampling(){
+        // Generate an arithmetic config
+        let rng = GeneratorOpenSSL {};
+        let mut arithmetic_config = ArithmeticConfig::basic().unwrap();
+        arithmetic_config.precision = 2;
+
+        let a = Float::with_val(arithmetic_config.precision*4, 1.0);
+        let b = Float::with_val(arithmetic_config.precision*4, 1.0);
+        let c = Float::with_val(arithmetic_config.precision*4, 1.0);
+        let d = Float::with_val(arithmetic_config.precision*4, 0.0);
+        let mut weights: Vec<Float> = Vec::new();
+        weights.push(a);
+        weights.push(b);
+        weights.push(c);
+        weights.push(d);
+
+        // this example should fail due to a zero weight 
+        let mut exact = arithmetic_config.enter_exact_scope();
+        assert!(exact.is_ok());
+        if let Err(e) = normalized_sample(&weights, & mut arithmetic_config, rng, false) {
+            assert_eq!(e,"All weights must be positive.");
+        }
+        exact = arithmetic_config.exit_exact_scope();
+        assert!(exact.is_ok());
+    }
+
+    /// Test normalized sampling in the case when precision
+    /// is insufficient for correct sampling
+    #[test]
+    fn test_insufficient_sampling_precision(){
+
+        // Generate an arithmetic config
+        let rng = GeneratorOpenSSL {};
+        let mut arithmetic_config = ArithmeticConfig::basic().unwrap();
+        arithmetic_config.precision = 2;
+
+        let a = Float::with_val(arithmetic_config.precision*4, 1.0/64.0);
+        let b = Float::with_val(arithmetic_config.precision*4, 1.0/32.0);
+        let c = Float::with_val(arithmetic_config.precision*4, 1.0/16.0);
+        let d = Float::with_val(arithmetic_config.precision*4, 1.0/64.0);
+        let mut weights: Vec<Float> = Vec::new();
+        weights.push(a);
+        weights.push(b);
+        weights.push(c);
+        weights.push(d);
+
+        // this example should fail due to inexact arithmetic 
+        let mut exact = arithmetic_config.enter_exact_scope();
+        assert!(exact.is_ok());
+        let result = normalized_sample(&weights, & mut arithmetic_config, rng, false);
+        let _s = result.unwrap();
+        exact = arithmetic_config.exit_exact_scope();
+        assert!(exact.is_err());
+    }
+
     #[test]
     fn test_power_bound() {
         // Generate an arithmetic config
@@ -367,6 +528,7 @@ mod tests {
             utility_max,
             max_outcomes,
             false,
+            1,
         );
         assert!(arithmetic_config_result.is_ok());
         let mut arithmetic_config = arithmetic_config_result.unwrap();
@@ -515,24 +677,20 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false
+            false, 1,
         );
         assert!(arithmetic_config_result.is_ok());
         let arithmetic_config = arithmetic_config_result.unwrap();
         assert!(arithmetic_config.precision >= 6000);
-        //let bx = 1;
-        
 
         let emp_arithmetic_config = ArithmeticConfig::for_exponential(
             eta,
             utility_min,
             utility_max,
             max_outcomes,
-            true
+            true, 1,
         ).unwrap();
         assert!(arithmetic_config.precision >= emp_arithmetic_config.precision);
-        //let hyp_prec = (utility_min as u32 + utility_max as u32) * eta.z *(eta.y + bx) + max_outcomes;
-        //assert!(arithmetic_config.precision<= hyp_prec);
     }
 
 
@@ -548,7 +706,7 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false
+            false, 1, 
         );
         assert!(arithmetic_config_result.is_ok());
         let arithmetic_config = arithmetic_config_result.unwrap();
@@ -566,7 +724,7 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false,
+            false, 1, 
         );
         assert!(arithmetic_config_result.is_ok());
         let mut arithmetic_config = arithmetic_config_result.unwrap();
@@ -587,7 +745,7 @@ mod tests {
                 weight_sum + Float::with_val(working_precision, base.pow(utility_max));
             weight_sum = new_weight_sum;
         }
-        //let x = Float::with_val(working_precision,base.pow(2));
+
         assert_eq!(10, weight_sum);
         // Exit exact scope
         let exit1 = arithmetic_config.exit_exact_scope();
@@ -626,7 +784,7 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false,
+            false, 1,
         );
         assert!(arithmetic_config_result.is_ok());
         let mut arithmetic_config = arithmetic_config_result.unwrap();
@@ -647,7 +805,6 @@ mod tests {
             let j = normalized_sample(&weights, &mut arithmetic_config, rng, true).unwrap();
             counts[j] += 1;
         }
-        println!("{:?}", counts);
 
         arithmetic_config.exit_exact_scope().unwrap();
 
@@ -672,7 +829,7 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false,
+            false, 1,
         );
         assert!(arithmetic_config_result.is_ok());
         let mut arithmetic_config = arithmetic_config_result.unwrap();
@@ -732,7 +889,7 @@ mod tests {
             utility_min,
             utility_max,
             max_outcomes,
-            false,
+            false, 1,
         );
         assert!(arithmetic_config_result.is_ok());
         let mut arithmetic_config = arithmetic_config_result.unwrap();
@@ -745,5 +902,50 @@ mod tests {
 
         // Exit exact scope
         arithmetic_config.exit_exact_scope().unwrap();
+    }
+
+    #[test]
+    fn test_min_retries(){
+        // Generate an arithmetic config
+        let eta = &Eta::new(1, 1, 1).unwrap();
+        let utility_min = -1;
+        let utility_max = 10;
+        let max_outcomes = 10;
+        let rng = GeneratorOpenSSL {};
+        let min_retries = 5;
+        let arithmetic_config_result = ArithmeticConfig::for_exponential(
+            eta,
+            utility_min,
+            utility_max,
+            max_outcomes,
+            false, min_retries,
+        );
+        assert!(arithmetic_config_result.is_ok());
+        let mut arithmetic_config = arithmetic_config_result.unwrap();
+
+        arithmetic_config.enter_exact_scope().unwrap();
+        let n = 1000;
+        // Construct a vector of equal weights and test we are getting
+        // approximately equal probabilities
+        let a = Float::with_val(arithmetic_config.precision, 1);
+        let b = Float::with_val(arithmetic_config.precision, 1);
+        let c = Float::with_val(arithmetic_config.precision, 1);
+        let mut weights: Vec<Float> = Vec::new();
+        weights.push(a);
+        weights.push(b);
+        weights.push(c);
+        let mut counts = [0; 3];
+        for _i in 0..n {
+            let j = normalized_sample(&weights, &mut arithmetic_config, rng, true).unwrap();
+            counts[j] += 1;
+        }
+
+        arithmetic_config.exit_exact_scope().unwrap();
+
+        let mut probs = [0.0; 3];
+        for i in 0..counts.len() {
+            probs[i] = (counts[i] as f64) / (n as f64);
+            assert!(probs[i] - 0.333 < 0.05);
+        }
     }
 }

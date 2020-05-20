@@ -34,14 +34,11 @@
 //! let max_outcomes = 10;
 //! let rng = GeneratorOpenSSL {};
 //! let outcomes: Vec<u32> = (0..max_outcomes).collect();
-//! let optimized_sample = false;
-//! let empirical_precision = false;
 //! let sample = exponential_mechanism(eta, &outcomes, util_fn, 
 //!                                     utility_min, utility_max, 
 //!                                     max_outcomes,
 //!                                     rng, 
-//!                                     optimized_sample, 
-//!                                     empirical_precision).unwrap();
+//!                                     Default::default()).unwrap();
 //! ```
 //! **Scaling based on utility function sensitivity**
 //! Given a utility function with sensitivity `alpha`, the `exponential_mechanism` 
@@ -78,3 +75,4 @@ pub use utilities::exactarithmetic::randomized_round as randomized_round;
 pub use utilities::exactarithmetic::normalized_sample as normalized_sample;
 pub use utilities::randomness::GeneratorOpenSSL;
 pub use mechanisms::exponential::exponential_mechanism as exponential_mechanism;
+pub use mechanisms::exponential::ExponentialOptions;

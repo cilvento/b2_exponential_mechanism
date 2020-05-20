@@ -6,36 +6,29 @@ fn utility_fn(x: &u32) -> f64 {
 }
 
 
-fn run_mechanism(n: i64, precision: bool) -> u32 {
+fn run_mechanism(num_retries: u32) -> u32 {
     let eta = Eta::new(1,1,1).unwrap();
     let rng = GeneratorOpenSSL {};
     let mut outcomes: Vec<u32> = Vec::new();
+    let n = 1000;
     let optimize = false;
     for i in 1..n {
         outcomes.push(i as u32);
     }
-    let options = ExponentialOptions { min_retries: 1, optimized_sample: optimize, empirical_precision: precision};
+    let options = ExponentialOptions { min_retries: num_retries, optimized_sample: optimize, empirical_precision: false};
     let result = exponential_mechanism(eta, &outcomes, utility_fn, 0, n as i64, n as u32, rng, options).unwrap();
     *result
 }
 
-fn theoretical(n: i64) -> u32 {
-    run_mechanism(n, false)
-}
 
-fn empirical(n: i64) -> u32 {
-    run_mechanism(n, true)
-}
 
 
 fn bench_sizes(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Precision Type");
+    let mut group = c.benchmark_group("Retry");
     group.sample_size(10);
-    for i in [100, 1000,2000, 3000, 4000, 5000, 10000, 15000, 20000, 25000].iter() {
-        group.bench_with_input(BenchmarkId::new("Theoretical", i), i, 
-            |b, i| b.iter(|| theoretical(*i)));
-        group.bench_with_input(BenchmarkId::new("Empirical", i), i, 
-           |b, i| b.iter(|| empirical(*i)));
+    for i in [1, 2, 3, 5, 10, 20].iter() {
+        group.bench_with_input(BenchmarkId::from_parameter(i) , i, 
+            |b, i| b.iter(|| run_mechanism(*i)));
     }
     group.finish();
 }

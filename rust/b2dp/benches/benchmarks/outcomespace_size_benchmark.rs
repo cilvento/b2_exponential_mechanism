@@ -1,5 +1,5 @@
 use criterion::{criterion_group, Criterion, BenchmarkId};
-use b2dp::{Eta, exponential_mechanism, GeneratorOpenSSL,mechanisms::naive::naive_exponential_mechanism};
+use b2dp::{Eta, exponential_mechanism, GeneratorOpenSSL,mechanisms::naive::naive_exponential_mechanism, mechanisms::exponential::ExponentialOptions};
 
 fn utility_fn(x: &u32) -> f64 {
     *x as f64
@@ -13,7 +13,8 @@ fn run_mechanism(n: i64, optimize: bool) -> u32 {
     for i in 1..n {
         outcomes.push(i as u32);
     }
-    let result = exponential_mechanism(eta, &outcomes, utility_fn, 0, n as i64, n as u32, rng, optimize, false).unwrap();
+    let options = ExponentialOptions { min_retries: 1, optimized_sample: optimize, empirical_precision: false};
+    let result = exponential_mechanism(eta, &outcomes, utility_fn, 0, n as i64, n as u32, rng, options).unwrap();
     *result
 }
 
@@ -41,7 +42,7 @@ fn run_naive(n: i64) -> u32 {
 fn bench_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("Outcome Space Size");
     group.sample_size(10);
-    for i in [100, 1000, 5000, 10000, 15000, 20000, 25000, 50000, 75000].iter() {
+    for i in [100, 1000, 5000, 10000, 15000, 20000, 25000, 50000].iter() {
         group.bench_with_input(BenchmarkId::new("Not Optimized", i), i, 
             |b, i| b.iter(|| not_optimized(*i)));
         group.bench_with_input(BenchmarkId::new("Optimized", i), i, 
