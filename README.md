@@ -1,5 +1,6 @@
 # Implementing the Exponential Mechanism with Base-2 DP
 Author: Christina Ilvento
+**The latest version of this code can be found at [https://github.com/cilvento/b2dp](https://github.com/cilvento/b2dp). This repository is for archival purposes only.**
 
 [*Paper*](https://arxiv.org/abs/1912.04222)
 ## *Code and supplemental materials.*
